@@ -1,4 +1,4 @@
-import { Product, Category } from "../types/types";
+import { Product, Category, Review } from "../types/types";
 import { CartItem } from '@/contexts/CartContext'; 
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
@@ -101,5 +101,24 @@ export const createOrder = async (orderData: OrderPayload) => {
     throw new Error(errorData.error || 'Failed to create order');
   }
 
+  return response.json();
+};
+
+export const getReviews = async (productId: string): Promise<Review[]> => {
+  const response = await fetch(`${API_BASE_URL}/reviews/product/${productId}`);
+  if (!response.ok) throw new Error('Failed to fetch reviews');
+  return response.json();
+};
+
+export const createReview = async (reviewData: { productId: string; rating: number; comment?: string }): Promise<Review> => {
+  const response = await fetch(`${API_BASE_URL}/reviews`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(reviewData),
+  });
+  if (!response.ok) {
+    const errorData = await response.json();
+    throw new Error(errorData.error || 'Failed to create review');
+  }
   return response.json();
 };

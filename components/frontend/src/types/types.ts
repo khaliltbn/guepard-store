@@ -15,6 +15,8 @@ export interface Product {
   categoryId: string;
   category?: Category;
   imageUrl: string;
+  averageRating?: number | null;
+  reviewCount?: number;
   created_at: string;
   updated_at: string;
 }
@@ -36,4 +38,13 @@ export interface OrderItem {
   quantity: number;
   price_at_time: number;
   created_at: string;
+}
+
+export interface Review {
+  id: string;
+  productId: string;
+  rating: number;
+  comment?: string | null;
+  createdAt: string;
+  updatedAt: string;
 }

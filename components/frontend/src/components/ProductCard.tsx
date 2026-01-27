@@ -2,7 +2,8 @@ import { Product } from "@/types/types";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { ShoppingCart, Package } from "lucide-react";
+import { ShoppingCart, Package, Star } from "lucide-react";
+import { ReviewDialog } from "@/components/ReviewDialog";
 
 interface ProductCardProps {
   product: Product;
@@ -52,22 +53,40 @@ export const ProductCard = ({
         </CardDescription>
       </CardHeader>
 
-      <CardContent className="mt-auto">
-        <p className="text-2xl font-bold text-primary font-heading">
-          ${product.price.toFixed(2)}
-        </p>
+      <CardContent className="mt-auto space-y-2">
+        <div className="flex items-center justify-between">
+          <p className="text-2xl font-bold text-primary font-heading">
+            ${product.price.toFixed(2)}
+          </p>
+          {product.averageRating !== null && product.averageRating !== undefined && (
+            <div className="flex items-center gap-1">
+              <Star className="w-4 h-4 fill-yellow-400 text-yellow-400" />
+              <span className="text-sm font-medium">
+                {product.averageRating.toFixed(1)}
+              </span>
+              {product.reviewCount !== undefined && product.reviewCount > 0 && (
+                <span className="text-xs text-muted-foreground">
+                  ({product.reviewCount})
+                </span>
+              )}
+            </div>
+          )}
+        </div>
       </CardContent>
 
-      <CardFooter className="gap-2">
+      <CardFooter className="gap-2 flex-col">
         {!showAdminActions && onAddToCart && (
-          <Button 
-            className="w-full" 
-            onClick={() => onAddToCart(product)}
-            disabled={product.stock === 0}
-          >
-            <ShoppingCart className="w-4 h-4 mr-2" />
-            Add to Cart
-          </Button>
+          <>
+            <Button 
+              className="w-full" 
+              onClick={() => onAddToCart(product)}
+              disabled={product.stock === 0}
+            >
+              <ShoppingCart className="w-4 h-4 mr-2" />
+              Add to Cart
+            </Button>
+            <ReviewDialog product={product} />
+          </>
         )}
         
         {showAdminActions && (
