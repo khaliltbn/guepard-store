@@ -130,7 +130,9 @@ jobs:
           GUEPARD_API_TOKEN: ${{ env.GUEPARD_API_TOKEN }}
         run: |
           eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
+          echo "🔍 Executing: guepard logout"
           guepard logout || true
+          echo "🔍 Executing: guepard login -c *** (token hidden)"
           guepard login -c "$GUEPARD_API_TOKEN"
 
       - name: Install jq
@@ -144,6 +146,7 @@ jobs:
           set -e
           eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
           # List deployments as JSON and select the first CREATED deployment for repository 'Guepard-shop2'
+          echo "🔍 Executing: guepard list deployments --json"
           DEPLOYMENTS_JSON=$(guepard list deployments --json)
           echo "$DEPLOYMENTS_JSON" | jq '.' > /tmp/deployments.json
           BASE_DEPLOYMENT_ID=$(echo "$DEPLOYMENTS_JSON" | jq -r '.[] | select(.repository == "Guepard-shop2" and .status == "CREATED") | .id' | head -n 1)
@@ -159,6 +162,7 @@ jobs:
         run: |
           set -e
           eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
+          echo "🔍 Executing: guepard list branches -x $BASE_DEPLOYMENT_ID --json"
           BRANCHES_JSON=$(guepard list branches -x "$BASE_DEPLOYMENT_ID" --json)
           echo "$BRANCHES_JSON" | jq '.' > /tmp/branches.json
           BRANCH_ID=$(echo "$BRANCHES_JSON" | jq -r '.[] | select(.branch_name == "main") | .id' | head -n 1)
@@ -175,8 +179,10 @@ jobs:
           set -e
           eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
           echo "Creating snapshot from main branch for CI testing..."
+          COMMIT_MESSAGE="CI test snapshot - $(date -u +%Y%m%d-%H%M%S)"
+          echo "🔍 Executing: guepard commit --message \"$COMMIT_MESSAGE\" --deployment-id $BASE_DEPLOYMENT_ID --branch-id $BRANCH_ID --json"
           COMMIT_JSON=$(guepard commit \
-            --message "CI test snapshot - $(date -u +%Y%m%d-%H%M%S)" \
+            --message "$COMMIT_MESSAGE" \
             --deployment-id "$BASE_DEPLOYMENT_ID" \
             --branch-id "$BRANCH_ID" \
             --json || true)
@@ -192,6 +198,7 @@ jobs:
           echo "Waiting for commit to appear in commits list..."
           # Wait for commit to appear in commits list (verify it's available)
           for i in {1..30}; do
+            echo "🔍 Executing: guepard list commits -x $BASE_DEPLOYMENT_ID --json (attempt $i/30)"
             COMMITS_JSON=$(guepard list commits -x "$BASE_DEPLOYMENT_ID" --json || true)
             COMMIT_EXISTS=$(echo "$COMMITS_JSON" | jq -r ".[] | select(.id == \"$COMMIT_ID\") | .id" | head -n 1)
             if [ "$COMMIT_EXISTS" = "$COMMIT_ID" ]; then
@@ -216,6 +223,7 @@ jobs:
         run: |
           set -e
           eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
+          echo "🔍 Executing: guepard clone -x $BASE_DEPLOYMENT_ID -s $SNAPSHOT_ID --json"
           CLONE_JSON=$(guepard clone -x "$BASE_DEPLOYMENT_ID" -s "$SNAPSHOT_ID" --json)
           echo "$CLONE_JSON" | jq '.' > /tmp/clone.json
           CLONE_DEPLOYMENT_ID=$(echo "$CLONE_JSON" | jq -r '.deployment.id')
@@ -243,6 +251,7 @@ jobs:
           echo "Initial wait for compute to start initializing..."
           sleep 15
           for i in {1..20}; do
+            echo "🔍 Executing: guepard compute -x $CLONE_DEPLOYMENT_ID status --json (attempt $i/20)"
             STATUS_JSON=$(guepard compute -x "$CLONE_DEPLOYMENT_ID" status --json 2>&1 || echo '{"error": "command_failed"}')
             if echo "$STATUS_JSON" | grep -q "502\|Bad Gateway\|Internal server error"; then
               echo "Attempt $i/20: Compute API returned error (still initializing), waiting 10s..."
@@ -348,6 +357,7 @@ jobs:
           eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
           if [ -n "${CLONE_DEPLOYMENT_ID:-}" ]; then
             echo "Cleaning up clone deployment: $CLONE_DEPLOYMENT_ID"
+            echo "🔍 Executing: guepard deploy -x $CLONE_DEPLOYMENT_ID -y"
             guepard deploy -x "$CLONE_DEPLOYMENT_ID" -y || echo "Clone cleanup failed (possibly already removed)"
           else
             echo "CLONE_DEPLOYMENT_ID not set, nothing to clean up"
