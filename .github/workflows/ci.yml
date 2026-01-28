@@ -217,7 +217,7 @@ jobs:
               else
                 echo "Connection string already set from clone response"
               fi
-              echo "Final connection string: ${DB_CONNECTION_STRING:0:50}..."
+              echo "Final connection string: $(echo "$DB_CONNECTION_STRING" | cut -c1-50)..."
               exit 0
             fi
             echo "Attempt $i/12: compute not healthy yet (status: $HEALTHY). Sleeping 10s..."
@@ -242,7 +242,7 @@ jobs:
             exit 1
           fi
           echo "Applying Prisma migrations to clone database..."
-          echo "Using DATABASE_URL: ${DATABASE_URL:0:60}..."
+          echo "Using DATABASE_URL: $(echo "$DATABASE_URL" | cut -c1-60)..."
           export DATABASE_URL
           bunx prisma migrate deploy
 
@@ -256,7 +256,7 @@ jobs:
             exit 1
           fi
           echo "Seeding test data with new format..."
-          echo "Using DATABASE_URL: ${DATABASE_URL:0:60}..."
+          echo "Using DATABASE_URL: $(echo "$DATABASE_URL" | cut -c1-60)..."
           export DATABASE_URL
           bunx prisma generate
           bun run prisma/integration/seed.ts
@@ -271,7 +271,7 @@ jobs:
             echo "Error: DATABASE_URL is not set or is null"
             exit 1
           fi
-          echo "Running Prisma DB invariants tests against ${DATABASE_URL:0:60}..."
+          echo "Running Prisma DB invariants tests against $(echo "$DATABASE_URL" | cut -c1-60)..."
           export DATABASE_URL
           pnpm test:db
 
