@@ -159,7 +159,7 @@ jobs:
         run: |
           set -e
           eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
-          BRANCHES_JSON=$(guepard list -x "$BASE_DEPLOYMENT_ID" branches --json)
+          BRANCHES_JSON=$(guepard list branches -x "$BASE_DEPLOYMENT_ID" --json)
           echo "$BRANCHES_JSON" | jq '.' > /tmp/branches.json
           BRANCH_ID=$(echo "$BRANCHES_JSON" | jq -r '.[] | select(.branch_name == "main") | .id' | head -n 1)
           if [ -z "$BRANCH_ID" ]; then
@@ -192,7 +192,7 @@ jobs:
           echo "Waiting for commit to appear in commits list..."
           # Wait for commit to appear in commits list (verify it's available)
           for i in {1..30}; do
-            COMMITS_JSON=$(guepard list -x "$BASE_DEPLOYMENT_ID" commits --json || true)
+            COMMITS_JSON=$(guepard list commits -x "$BASE_DEPLOYMENT_ID" --json || true)
             COMMIT_EXISTS=$(echo "$COMMITS_JSON" | jq -r ".[] | select(.id == \"$COMMIT_ID\") | .id" | head -n 1)
             if [ "$COMMIT_EXISTS" = "$COMMIT_ID" ]; then
               echo "Commit found in commits list, ready to use as snapshot"
@@ -333,7 +333,7 @@ jobs:
             echo "- Clone deployment: \`${CLONE_DEPLOYMENT_ID:-n/a}\`";
             echo "- Steps:";
             echo "  - \`guepard list deployments --json\` (select base deployment)";
-            echo "  - \`guepard list -x \$BASE_DEPLOYMENT_ID branches --json\` (get main branch ID)";
+            echo "  - \`guepard list branches -x \$BASE_DEPLOYMENT_ID --json\` (get main branch ID)";
             echo "  - \`guepard commit --deployment-id \$BASE_DEPLOYMENT_ID --branch-id \$BRANCH_ID --json\` (create snapshot)";
             echo "  - \`guepard clone -x \$BASE_DEPLOYMENT_ID -s \$SNAPSHOT_ID --json\` (create clone)";
             echo "  - Wait for compute to be healthy";
