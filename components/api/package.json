@@ -17,7 +17,9 @@
   "scripts": {
     "dev": "bunx prisma generate && bun run --hot src/index.ts",
     "start": "bunx prisma generate && bun src/index.ts",
-    "test": "bun test --preload ./src/test/setup.ts"
+    "test": "bun test src/test --preload ./src/test/setup.ts",
+    "test:unit": "bun test src/test --preload ./src/test/setup.ts",
+    "test:db": "bunx prisma generate && bun test prisma/integration/invariants.test.ts"
   },
   "dependencies": {
     "@prisma/client": "^6.17.1",

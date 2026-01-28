@@ -80,7 +80,7 @@ jobs:
 
       - name: Run API unit tests
         working-directory: components/api
-        run: pnpm test
+        run: pnpm test:unit
 
       - name: CI summary - API
         if: always()
@@ -103,6 +103,20 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+          run_install: false
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v1
 
       - name: Install Guepard CLI via Homebrew
         run: |
@@ -147,7 +161,8 @@ jobs:
         working-directory: components/api
         run: |
           echo "Running Prisma DB invariants tests against $DATABASE_URL"
-          bun test prisma/integration/invariants.test.ts
+          pnpm install --frozen-lockfile
+          pnpm test:db
 
       - name: Write sample data (seed)
         id: db_seed
