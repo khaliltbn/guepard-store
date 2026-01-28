@@ -251,8 +251,8 @@ jobs:
           echo "Initial wait for compute to start initializing..."
           sleep 15
           for i in {1..20}; do
-            echo "🔍 Executing: guepard compute -x $CLONE_DEPLOYMENT_ID status --json (attempt $i/20)"
-            STATUS_JSON=$(guepard compute -x "$CLONE_DEPLOYMENT_ID" status --json 2>&1 || echo '{"error": "command_failed"}')
+            echo "🔍 Executing: guepard compute status -x $CLONE_DEPLOYMENT_ID --json (attempt $i/20)"
+            STATUS_JSON=$(guepard compute status -x "$CLONE_DEPLOYMENT_ID" --json 2>&1 || echo '{"error": "command_failed"}')
             if echo "$STATUS_JSON" | grep -q "502\|Bad Gateway\|Internal server error"; then
               echo "Attempt $i/20: Compute API returned error (still initializing), waiting 10s..."
             elif echo "$STATUS_JSON" | jq -e '.status' > /dev/null 2>&1; then
