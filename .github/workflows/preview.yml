@@ -1,22 +1,32 @@
 name: Preview Environment
 
 on:
-  pull_request:
-    types: [opened, synchronize, reopened, closed]
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: "Pull request number (used for preview DB/env naming)"
+        required: true
+        type: number
+      action:
+        description: "Action to perform"
+        required: true
+        default: "deploy"
+        type: choice
+        options:
+          - deploy
+          - cleanup
 
 env:
   GUEPARD_TOKEN: ${{ secrets.GUEPARD_TOKEN }}
+  PR_ID: ${{ inputs.pr_number }}
 
 jobs:
   preview:
-    if: github.event.action != 'closed'
+    if: inputs.action == 'deploy'
     runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v4
-
-      - name: Set PR ID
-        run: echo "PR_ID=${{ github.event.pull_request.number }}" >> $GITHUB_ENV
 
       - name: Clone database
         run: |
@@ -48,10 +58,10 @@ jobs:
         run: npm run test:e2e
 
   cleanup:
-    if: github.event.action == 'closed'
+    if: inputs.action == 'cleanup'
     runs-on: ubuntu-latest
 
     steps:
       - name: Remove preview DB
         run: |
-          guepard db drop preview-db-pr-${{ github.event.pull_request.number }}
+          guepard db drop preview-db-pr-${PR_ID}
