@@ -10,7 +10,8 @@ on:
     types: [opened, synchronize, reopened]
 
 env:
-  GUEPARD_TOKEN: ${{ secrets.GUEPARD_TOKEN }}
+  # Used by Guepard CLI installed via Homebrew (guepard login -c ...)
+  GUEPARD_API_TOKEN: ${{ secrets.GUEPARD_API_TOKEN }}
 
 jobs:
   frontend-tests:
@@ -103,10 +104,26 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Install Guepard CLI via Homebrew
+        run: |
+          /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+          eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
+          brew tap guepard-corp/guepard
+          brew install guepard
+
+      - name: Guepard CLI login
+        env:
+          GUEPARD_API_TOKEN: ${{ env.GUEPARD_API_TOKEN }}
+        run: |
+          eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
+          guepard logout || true
+          guepard login -c "$GUEPARD_API_TOKEN"
+
       - name: Clone database
         id: db_clone
         run: |
           set -e
+          eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
           DB_NAME="ci-db-${{ github.run_id }}"
           echo "DB_NAME=$DB_NAME" >> "$GITHUB_ENV"
           echo "Cloning prod-db to $DB_NAME"
@@ -118,6 +135,7 @@ jobs:
         id: db_migrate
         run: |
           set -e
+          eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
           echo "Applying migrations to $DB_NAME"
           guepard db migrate "$DB_NAME" \
             --migrations ./migrations
@@ -144,6 +162,7 @@ jobs:
         id: db_diff
         run: |
           set -e
+          eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
           echo "Checking schema diff between prod-db and $DB_NAME"
           guepard db diff prod-db "$DB_NAME" \
             --fail-on-breaking
@@ -167,6 +186,7 @@ jobs:
       - name: Drop CI database
         if: always()
         run: |
+          eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
           if [ -n "${DB_NAME:-}" ]; then
             echo "Dropping CI database $DB_NAME"
             guepard db drop "$DB_NAME" || echo "Drop failed (possibly already removed)"
