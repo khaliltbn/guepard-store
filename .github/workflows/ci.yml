@@ -370,9 +370,9 @@ jobs:
             echo "### DB integration tests (clone from snapshot, validate)";
             echo "";
             echo "- Status: ${{ job.status }}";
-            echo "- Base deployment: \`${BASE_DEPLOYMENT_ID:-n/a}\`";
+            echo "- Original Prod Database: \`${BASE_DEPLOYMENT_ID:-n/a}\`";
             echo "- Snapshot ID: \`${SNAPSHOT_ID:-n/a}\`";
-            echo "- Clone deployment: \`${CLONE_DEPLOYMENT_ID:-n/a}\`";
+            echo "- Clone database: \`${CLONE_DEPLOYMENT_ID:-n/a}\`";
             echo "- Steps:";
             echo "  - \`guepard list deployments --json\` (select base deployment)";
             echo "  - \`guepard list branches -x \$BASE_DEPLOYMENT_ID --json\` (get main branch ID)";
@@ -440,4 +440,3 @@ jobs:
             echo "- Directory: \`components/api\`";
             echo "- Command: \`pnpm test\` (with TEST_MODE=contract)";
           } >> "$GITHUB_STEP_SUMMARY"
-
