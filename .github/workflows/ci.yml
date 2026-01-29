@@ -315,8 +315,6 @@ jobs:
           echo "Applying Prisma migrations to clone database..."
           echo "Using DATABASE_URL: $(echo "$DATABASE_URL" | cut -c1-60)..."
           export DATABASE_URL
-          bunx prisma migrate diff --from-empty --to-schema-datamodel prisma/schema.prisma --script > prisma/migrations/000_baseline/migration.sql
-          bunx prisma migrate resolve --applied 000_baseline
           bunx prisma migrate deploy
 
       - name: Seed data with new format after migrations
