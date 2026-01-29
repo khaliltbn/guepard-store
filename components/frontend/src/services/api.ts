@@ -3,40 +3,13 @@ import { CartItem } from '@/contexts/CartContext';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
 
-// #region agent log
-fetch('http://127.0.0.1:7245/ingest/32e45304-f290-4da1-a9b1-66cfaf4392ac', {
-  method: 'POST',
-  headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify({
-    sessionId: 'debug-session',
-    runId: 'pre-fix',
-    hypothesisId: 'H1',
-    location: 'services/api.ts:API_BASE_URL',
-    message: 'API base URL at module load',
-    data: { API_BASE_URL },
-    timestamp: Date.now(),
-  }),
-}).catch(() => {});
-// #endregion
-
 export type ProductFormData = {
   name: string;
   description: string;
   price: number;
   stock: number;
-  imageUrl?: string;
+  imageUrl: string;
   categoryId: string;
-  images?: string[];
-  variants?: Array<{
-    sku?: string;
-    size?: string;
-    color?: string;
-    material?: string;
-    price?: number;
-    stock: number;
-    imageUrl?: string;
-    isDefault?: boolean;
-  }>;
 };
 
 type GetProductsParams = {
@@ -50,12 +23,7 @@ export interface OrderPayload {
     phone: string;
     address: string;
   };
-  cartItems: Array<{
-    id: string;
-    quantity: number;
-    price: number;
-    variantId?: string;
-  }>;
+  cartItems: CartItem[];
 }
 
 
@@ -73,59 +41,19 @@ export const getProducts = async (params: GetProductsParams = {}): Promise<Produ
 
   const requestUrl = `${API_BASE_URL}/products${queryString ? `?${queryString}` : ''}`;
 
-  // #region agent log
-  fetch('http://127.0.0.1:7245/ingest/32e45304-f290-4da1-a9b1-66cfaf4392ac', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      sessionId: 'debug-session',
-      runId: 'pre-fix',
-      hypothesisId: 'H1',
-      location: 'services/api.ts:getProducts',
-      message: 'Fetching products',
-      data: { requestUrl, params },
-      timestamp: Date.now(),
-    }),
-  }).catch(() => {});
-  // #endregion
-
   const response = await fetch(requestUrl);
   if (!response.ok) throw new Error('Failed to fetch products');
 
   const products: Product[] = await response.json();
-  return products.map((product: any) => ({
+  return products.map(product => ({
     ...product,
-    price: parseFloat(product.price as any),
-    variants: Array.isArray(product.variants)
-      ? product.variants.map((v: any) => ({
-          ...v,
-          price: v.price == null ? v.price : parseFloat(v.price as any),
-        }))
-      : undefined,
+    price: parseFloat(product.price as any), 
   }));
 };
 
 
 
 export const getCategories = async (): Promise<Category[]> => {
-  const requestUrl = `${API_BASE_URL}/categories`;
-
-  // #region agent log
-  fetch('http://127.0.0.1:7245/ingest/32e45304-f290-4da1-a9b1-66cfaf4392ac', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      sessionId: 'debug-session',
-      runId: 'pre-fix',
-      hypothesisId: 'H1',
-      location: 'services/api.ts:getCategories',
-      message: 'Fetching categories',
-      data: { requestUrl },
-      timestamp: Date.now(),
-    }),
-  }).catch(() => {});
-  // #endregion
-
   const response = await fetch(`${API_BASE_URL}/categories`);
   if (!response.ok) throw new Error('Failed to fetch categories');
   return response.json();
