@@ -1,5 +1,5 @@
 import { Product, Category } from "../types/types";
-import { CartItem } from '@/contexts/CartContext'; 
+import { CartItem } from '@/contexts/CartContext';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
 
@@ -14,7 +14,7 @@ export type ProductFormData = {
 
 type GetProductsParams = {
   search?: string;
-  category?: string; 
+  category?: string;
 };
 
 export interface OrderPayload {
@@ -47,7 +47,7 @@ export const getProducts = async (params: GetProductsParams = {}): Promise<Produ
   const products: Product[] = await response.json();
   return products.map(product => ({
     ...product,
-    price: parseFloat(product.price as any), 
+    price: parseFloat(product.price as any),
   }));
 };
 
@@ -101,5 +101,36 @@ export const createOrder = async (orderData: OrderPayload) => {
     throw new Error(errorData.error || 'Failed to create order');
   }
 
+  return response.json();
+};
+
+
+// Rating API functions
+export interface RatingsResponse {
+  ratings: Rating[];
+  averageRating: number;
+  totalRatings: number;
+}
+
+import { Rating } from "../types/types";
+
+export const getRatingsForProduct = async (productId: string): Promise<RatingsResponse> => {
+  const response = await fetch(`${API_BASE_URL}/ratings/product/${productId}`);
+  if (!response.ok) throw new Error('Failed to fetch ratings');
+  return response.json();
+};
+
+export const submitRating = async (
+  productId: string,
+  rating: number,
+  review?: string,
+  guestName?: string
+): Promise<Rating> => {
+  const response = await fetch(`${API_BASE_URL}/ratings`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ productId, rating, review, guestName }),
+  });
+  if (!response.ok) throw new Error('Failed to submit rating');
   return response.json();
 };
