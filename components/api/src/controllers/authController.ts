@@ -91,27 +91,3 @@ export const login = async (req: Request, res: Response) => {
         res.status(500).json({ error: 'Failed to login' });
     }
 };
-
-export const getMe = async (req: any, res: Response) => {
-    try {
-        const user = await prisma.user.findUnique({
-            where: { id: req.user.userId },
-        });
-
-        if (!user) {
-            return res.status(404).json({ error: 'User not found' });
-        }
-
-        res.json({
-            user: {
-                id: user.id,
-                email: user.email,
-                name: user.name,
-                role: user.role,
-            },
-        });
-    } catch (error) {
-        console.error('getMe error:', error);
-        res.status(500).json({ error: 'Failed to fetch user profile' });
-    }
-};
