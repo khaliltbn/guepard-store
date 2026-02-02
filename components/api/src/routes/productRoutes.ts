@@ -4,7 +4,7 @@ import { prisma } from '../lib/prisma';
 const router = Router();
 
 router.get('/', async (req, res) => {
-  const { q, category } = req.query; 
+  const { q, category } = req.query;
 
   try {
     const products = await prisma.product.findMany({
@@ -17,10 +17,23 @@ router.get('/', async (req, res) => {
           slug: category as string
         } : undefined
       },
-      include: { category: true },
+      include: { category: true, ratings: true },
       orderBy: { createdAt: 'desc' },
     });
-    res.json(products);
+
+    // Add averageRating to each product
+    const productsWithRatings = products.map(product => {
+      const avgRating = product.ratings.length > 0
+        ? product.ratings.reduce((sum, r) => sum + r.rating, 0) / product.ratings.length
+        : 0;
+      return {
+        ...product,
+        averageRating: Math.round(avgRating * 10) / 10,
+        totalRatings: product.ratings.length
+      };
+    });
+
+    res.json(productsWithRatings);
   } catch (error) {
     res.status(500).json({ error: 'Failed to fetch products' });
   }
@@ -31,12 +44,21 @@ router.get('/:id', async (req, res) => {
   try {
     const product = await prisma.product.findUnique({
       where: { id },
-      include: { category: true },
+      include: { category: true, ratings: true },
     });
     if (!product) {
       return res.status(404).json({ error: 'Product not found' });
     }
-    res.json(product);
+
+    const avgRating = product.ratings.length > 0
+      ? product.ratings.reduce((sum, r) => sum + r.rating, 0) / product.ratings.length
+      : 0;
+
+    res.json({
+      ...product,
+      averageRating: Math.round(avgRating * 10) / 10,
+      totalRatings: product.ratings.length
+    });
   } catch (error) {
     res.status(500).json({ error: 'Failed to fetch product' });
   }

@@ -6,6 +6,15 @@ export interface Category {
   created_at: string;
 }
 
+export interface Rating {
+  id: string;
+  productId: string;
+  rating: number;
+  review?: string;
+  guestName?: string;
+  createdAt: string;
+}
+
 export interface Product {
   id: string;
   name: string;
@@ -17,6 +26,9 @@ export interface Product {
   imageUrl: string;
   created_at: string;
   updated_at: string;
+  ratings?: Rating[];
+  averageRating?: number;
+  totalRatings?: number;
 }
 
 export interface Order {
@@ -37,3 +49,4 @@ export interface OrderItem {
   price_at_time: number;
   created_at: string;
 }
+

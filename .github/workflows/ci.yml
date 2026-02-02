@@ -440,4 +440,3 @@ jobs:
             echo "- Directory: \`components/api\`";
             echo "- Command: \`pnpm test\` (with TEST_MODE=contract)";
           } >> "$GITHUB_STEP_SUMMARY"
-
