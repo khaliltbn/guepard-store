@@ -303,11 +303,55 @@ jobs:
         working-directory: components/api
         run: pnpm install --frozen-lockfile
 
-      - name: Start compute for base deployment
+      - name: Start compute for shadow
         run: |
-          export SHADOW_DATABASE_URL="${{ secrets.SHADOW_DATABASE_URL }}"
+          set -euo pipefail
           eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
+          export SHADOW_DATABASE_URL="${{ secrets.SHADOW_DATABASE_URL }}"
+
+          echo "Starting compute for shadow database..."
           guepard compute start -x "$SHADOW_DATABASE_URL" || true
+
+
+      - name: Wait for shadow compute to be healthy
+        id: shadow_ready
+        run: |
+          set -euo pipefail
+          eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
+          export SHADOW_DATABASE_URL="${{ secrets.SHADOW_DATABASE_URL }}"
+      
+          echo "Waiting for shadow compute to be healthy..."
+          echo "Initial wait for compute to start initializing..."
+          sleep 15
+      
+          for i in {1..20}; do
+            echo "🔍 Attempt $i/20: checking compute status"
+      
+            STATUS_JSON=$(guepard compute status -x "$SHADOW_DATABASE_URL" --json 2>&1 || echo '{"error":"command_failed"}')
+      
+            if echo "$STATUS_JSON" | grep -qE "502|Bad Gateway|Internal server error"; then
+              echo "Compute API not ready yet, waiting 10s..."
+            elif echo "$STATUS_JSON" | jq -e '.status' >/dev/null 2>&1; then
+              HEALTHY=$(echo "$STATUS_JSON" | jq -r '.status')
+              if [ "$HEALTHY" = "Healthy" ]; then
+                echo "✅ Shadow compute is healthy."
+                exit 0
+              else
+                echo "Compute status is '$HEALTHY', waiting 10s..."
+              fi
+            else
+              echo "Unexpected response:"
+              echo "$STATUS_JSON" | head -c 200
+            fi
+      
+            sleep 10
+          done
+      
+          echo "❌ Error: shadow compute did not become healthy in time (~3.5 minutes)"
+          echo "Last status response:"
+          echo "$STATUS_JSON" | head -20
+          exit 1
+
 
       - name: Run Prisma migrations against clone
         env:
