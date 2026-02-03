@@ -387,7 +387,18 @@ jobs:
             --script \
             --output prisma/migrations/000_baseline/migration.sql
 
-          bunx prisma migrate resolve --applied 000_baseline
+          set +e
+          bunx prisma migrate resolve --applied 000_baseline 2>&1 | tee /tmp/resolve.out
+          RESULT=${PIPESTATUS[0]}
+          set -e
+          if [ "$RESULT" -ne 0 ]; then
+            if grep -q "P3008\|already recorded as applied" /tmp/resolve.out; then
+              echo "000_baseline already applied in clone (expected when clone is from snapshot), continuing..."
+            else
+              cat /tmp/resolve.out
+              exit 1
+            fi
+          fi
 
           bunx prisma migrate diff \
             --from-migrations prisma/migrations \
