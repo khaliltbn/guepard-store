@@ -2,12 +2,7 @@ name: CI
 
 "on":
   push:
-    branches:
-      - main
-      - develop
-      - "*"
   pull_request:
-    types: [opened, synchronize, reopened]
 
 env:
   # Used by Guepard CLI installed via Homebrew (guepard login -c ...)
