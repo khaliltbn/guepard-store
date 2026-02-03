@@ -1,9 +1,6 @@
 name: CI
 
-"on":
-  push:
-  pull_request:
-  workflow_dispatch:
+"on": [push, pull_request, workflow_dispatch]
 
 env:
   # Used by Guepard CLI installed via Homebrew (guepard login -c ...)
