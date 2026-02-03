@@ -2,12 +2,7 @@ name: CI
 
 "on":
   push:
-    branches:
-      - main
-      - develop
-      - "*"
   pull_request:
-    types: [opened, synchronize, reopened]
 
 env:
   # Used by Guepard CLI installed via Homebrew (guepard login -c ...)
@@ -315,62 +310,47 @@ jobs:
         working-directory: components/api
         run: pnpm install --frozen-lockfile
 
-      - name: Get shadow deployment ID
-        id: shadow_deployment
-        env:
-          SHADOW_DATABASE_URL: ${{ secrets.SHADOW_DATABASE_URL }}
+      - name: Clone shadow deployment from snapshot
+        id: shadow_clone
         run: |
           set -e
           eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
-          if [ -z "${SHADOW_DATABASE_URL:-}" ]; then
-            echo "Error: SHADOW_DATABASE_URL secret is not set (connection string for shadow DB)"
+          echo "🔍 Executing: guepard clone -x $BASE_DEPLOYMENT_ID -s $SNAPSHOT_ID --json (shadow clone for Prisma migrate)"
+          SHADOW_CLONE_JSON=$(guepard clone -x "$BASE_DEPLOYMENT_ID" -s "$SNAPSHOT_ID" --json)
+          echo "$SHADOW_CLONE_JSON" | jq '.' > /tmp/shadow_clone.json
+          SHADOW_CLONE_DEPLOYMENT_ID=$(echo "$SHADOW_CLONE_JSON" | jq -r '.deployment.id')
+          SHADOW_CONNECTION_STRING=$(echo "$SHADOW_CLONE_JSON" | jq -r '.compute.connection_string // empty')
+          if [ -z "$SHADOW_CLONE_DEPLOYMENT_ID" ]; then
+            echo "Failed to capture shadow clone deployment id"
             exit 1
           fi
-          # Extract deployment name from URL host: postgresql://...@fierce-mountain-pe56o5.us-west-aws.db.guepard.run:port/... -> fierce-mountain-pe56o5
-          HOST=$(echo "$SHADOW_DATABASE_URL" | sed -n 's|.*@\([^:]*\):.*|\1|p')
-          SHADOW_DEPLOYMENT_NAME=$(echo "$HOST" | cut -d. -f1)
-          if [ -z "$SHADOW_DEPLOYMENT_NAME" ]; then
-            echo "Error: Could not extract deployment name from SHADOW_DATABASE_URL host (got: $HOST)"
-            exit 1
+          if [ -n "$SHADOW_CONNECTION_STRING" ] && [ "$SHADOW_CONNECTION_STRING" != "null" ]; then
+            echo "Shadow connection string captured from clone response"
+            echo "SHADOW_DATABASE_URL=$SHADOW_CONNECTION_STRING" >> "$GITHUB_ENV"
           fi
-          echo "🔍 Executing: guepard list deployments --json (resolving shadow deployment by name: $SHADOW_DEPLOYMENT_NAME)"
-          DEPLOYMENTS_JSON=$(guepard list deployments --json)
-          SHADOW_DEPLOYMENT_ID=$(echo "$DEPLOYMENTS_JSON" | jq -r --arg name "$SHADOW_DEPLOYMENT_NAME" '.[] | select(.name == $name) | .id' | head -n 1)
-          if [ -z "$SHADOW_DEPLOYMENT_ID" ] || [ "$SHADOW_DEPLOYMENT_ID" = "null" ]; then
-            echo "No deployment found with name '$SHADOW_DEPLOYMENT_NAME' (from SHADOW_DATABASE_URL host)"
-            exit 1
-          fi
-          echo "SHADOW_DEPLOYMENT_ID=$SHADOW_DEPLOYMENT_ID" >> "$GITHUB_ENV"
-          echo "shadow_deployment_id=$SHADOW_DEPLOYMENT_ID" >> "$GITHUB_OUTPUT"
+          echo "SHADOW_CLONE_DEPLOYMENT_ID=$SHADOW_CLONE_DEPLOYMENT_ID" >> "$GITHUB_ENV"
+          echo "shadow_clone_deployment_id=$SHADOW_CLONE_DEPLOYMENT_ID" >> "$GITHUB_OUTPUT"
 
-      - name: Start compute for shadow
+      - name: Wait for shadow clone compute to be healthy
+        id: shadow_compute_ready
         run: |
           set -e
           eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
-          echo "🔍 Executing: guepard compute start -x \$SHADOW_DEPLOYMENT_ID (deployment ID, not URL)"
-          guepard compute start -x "$SHADOW_DEPLOYMENT_ID" || true
-
-      - name: Wait for shadow compute to be healthy
-        id: shadow_ready
-        run: |
-          set -e
-          eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
-          echo "Waiting for shadow compute to be healthy..."
-          echo "Initial wait for compute to start initializing..."
+          echo "Waiting for shadow clone compute $SHADOW_CLONE_DEPLOYMENT_ID to be healthy..."
           sleep 15
           for i in {1..20}; do
-            echo "🔍 Executing: guepard compute status -x \$SHADOW_DEPLOYMENT_ID --json (attempt $i/20)"
-            STATUS_JSON=$(guepard compute status -x "$SHADOW_DEPLOYMENT_ID" --json 2>&1 || echo '{"error":"command_failed"}')
+            echo "🔍 Executing: guepard compute status -x $SHADOW_CLONE_DEPLOYMENT_ID --json (attempt $i/20)"
+            STATUS_JSON=$(guepard compute status -x "$SHADOW_CLONE_DEPLOYMENT_ID" --json 2>&1 || echo '{"error":"command_failed"}')
             if echo "$STATUS_JSON" | grep -qE "502|Bad Gateway|Internal server error"; then
               echo "Attempt $i/20: Compute API not ready yet, waiting 10s..."
             elif echo "$STATUS_JSON" | jq -e '.status' >/dev/null 2>&1; then
-              HEALTHY=$(echo "$STATUS_JSON" | jq -r '.status')
+              HEALTHY=$(echo "$STATUS_JSON" | jq -r '.status // empty')
               if [ "$HEALTHY" = "Healthy" ]; then
-                echo "✅ Shadow compute is healthy."
-                SHADOW_CONNECTION=$(echo "$STATUS_JSON" | jq -r '.connection_string // empty')
-                if [ -n "$SHADOW_CONNECTION" ] && [ "$SHADOW_CONNECTION" != "null" ]; then
-                  echo "SHADOW_DATABASE_URL=$SHADOW_CONNECTION" >> "$GITHUB_ENV"
-                  echo "Shadow connection string captured from compute status for Prisma migrate"
+                echo "✅ Shadow clone compute is healthy."
+                COMPUTE_CONNECTION=$(echo "$STATUS_JSON" | jq -r '.connection_string // empty')
+                if [ -n "$COMPUTE_CONNECTION" ] && [ "$COMPUTE_CONNECTION" != "null" ]; then
+                  echo "SHADOW_DATABASE_URL=$COMPUTE_CONNECTION" >> "$GITHUB_ENV"
+                  echo "Shadow connection string set from compute status"
                 fi
                 exit 0
               else
@@ -381,27 +361,25 @@ jobs:
             fi
             sleep 10
           done
-          echo "❌ Error: shadow compute did not become healthy in time (~3.5 minutes)"
-          echo "Last status response: $(echo "$STATUS_JSON" | head -c 200)"
+          echo "❌ Error: shadow clone compute did not become healthy in time"
+          echo "$STATUS_JSON" | head -20
           exit 1
-
 
       - name: Run Prisma migrations against clone
         env:
           DATABASE_URL: ${{ env.DB_CONNECTION_STRING }}
-          SHADOW_FROM_ENV: ${{ env.SHADOW_DATABASE_URL }}
-          SHADOW_FROM_SECRET: ${{ secrets.SHADOW_DATABASE_URL }}
+          SHADOW_DATABASE_URL: ${{ env.SHADOW_DATABASE_URL }}
         working-directory: components/api
         run: |
           if [ -z "$DATABASE_URL" ] || [ "$DATABASE_URL" = "null" ]; then
             echo "Error: DATABASE_URL is not set or is null"
             exit 1
           fi
-          export SHADOW_DATABASE_URL="${SHADOW_FROM_ENV:-$SHADOW_FROM_SECRET}"
-          if [ -z "$SHADOW_DATABASE_URL" ] || [ "$SHADOW_DATABASE_URL" = "null" ]; then
-            echo "Error: SHADOW_DATABASE_URL is not set (expected from shadow compute status or secret SHADOW_DATABASE_URL)"
+          if [ -z "${SHADOW_DATABASE_URL:-}" ] || [ "$SHADOW_DATABASE_URL" = "null" ]; then
+            echo "Error: SHADOW_DATABASE_URL is not set (expected from shadow clone compute)"
             exit 1
           fi
+          export SHADOW_DATABASE_URL
           echo "Applying Prisma migrations to clone database..."
           echo "Using DATABASE_URL: $(echo "$DATABASE_URL" | cut -c1-60)..."
           echo "Using SHADOW_DATABASE_URL: $(echo "$SHADOW_DATABASE_URL" | cut -c1-60)..."
@@ -461,27 +439,32 @@ jobs:
             echo "- Original Prod Database: \`${BASE_DEPLOYMENT_ID:-n/a}\`";
             echo "- Snapshot ID: \`${SNAPSHOT_ID:-n/a}\`";
             echo "- Clone database: \`${CLONE_DEPLOYMENT_ID:-n/a}\`";
+            echo "- Shadow clone (for migrate): \`${SHADOW_CLONE_DEPLOYMENT_ID:-n/a}\`";
             echo "- Steps:";
-            echo "  - \`guepard list deployments --json\` (select base deployment)";
-            echo "  - \`guepard list branches -x \$BASE_DEPLOYMENT_ID --json\` (get main branch ID)";
-            echo "  - \`guepard commit --deployment-id \$BASE_DEPLOYMENT_ID --branch-id \$BRANCH_ID --json\` (create snapshot)";
-            echo "  - \`guepard clone -x \$BASE_DEPLOYMENT_ID -s \$SNAPSHOT_ID --json\` (create clone)";
-            echo "  - Wait for compute to be healthy";
+            echo "  - Resolve base deployment from CI_DATABASE_URL";
+            echo "  - \`guepard commit\` (create snapshot), \`guepard clone\` (main clone + shadow clone)";
+            echo "  - Wait for both clone computes to be healthy";
             echo "  - \`prisma migrate deploy\` (apply migrations to clone)";
             echo "  - Seed test data with new format";
             echo "  - Prisma invariants tests against migrated + seeded clone";
           } >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Drop CI database
+      - name: Drop CI databases
         if: always()
         run: |
           eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
+          if [ -n "${SHADOW_CLONE_DEPLOYMENT_ID:-}" ]; then
+            echo "Cleaning up shadow clone deployment: $SHADOW_CLONE_DEPLOYMENT_ID"
+            echo "🔍 Executing: guepard deploy -x $SHADOW_CLONE_DEPLOYMENT_ID -y"
+            guepard deploy -x "$SHADOW_CLONE_DEPLOYMENT_ID" -y || echo "Shadow clone cleanup failed (possibly already removed)"
+          fi
           if [ -n "${CLONE_DEPLOYMENT_ID:-}" ]; then
             echo "Cleaning up clone deployment: $CLONE_DEPLOYMENT_ID"
             echo "🔍 Executing: guepard deploy -x $CLONE_DEPLOYMENT_ID -y"
             guepard deploy -x "$CLONE_DEPLOYMENT_ID" -y || echo "Clone cleanup failed (possibly already removed)"
-          else
-            echo "CLONE_DEPLOYMENT_ID not set, nothing to clean up"
+          fi
+          if [ -z "${CLONE_DEPLOYMENT_ID:-}" ] && [ -z "${SHADOW_CLONE_DEPLOYMENT_ID:-}" ]; then
+            echo "No clone deployment IDs set, nothing to clean up"
           fi
 
   api-contract-tests:
