@@ -1,6 +1,6 @@
 name: CI
 
-on:
+"on":
   push:
     branches:
       - main
@@ -149,19 +149,19 @@ jobs:
       - name: Select base deployment
         id: base_deployment
         env:
-          PRODUCTION_DATABASE_URL: ${{ secrets.PRODUCTION_DATABASE_URL }}
+          CI_DATABASE_URL: ${{ secrets.CI_DATABASE_URL }}
         run: |
           set -e
           eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
-          if [ -z "${PRODUCTION_DATABASE_URL:-}" ]; then
-            echo "Error: PRODUCTION_DATABASE_URL secret is not set (connection string for main/production DB)"
+          if [ -z "${CI_DATABASE_URL:-}" ]; then
+            echo "Error: CI_DATABASE_URL secret is not set (connection string for main/production DB)"
             exit 1
           fi
           # Extract deployment name from URL host: postgresql://...@fierce-mountain-pe56o5.us-west-aws.db.guepard.run:port/... -> fierce-mountain-pe56o5
-          HOST=$(echo "$PRODUCTION_DATABASE_URL" | sed -n 's|.*@\([^:]*\):.*|\1|p')
+          HOST=$(echo "$CI_DATABASE_URL" | sed -n 's|.*@\([^:]*\):.*|\1|p')
           BASE_DEPLOYMENT_NAME=$(echo "$HOST" | cut -d. -f1)
           if [ -z "$BASE_DEPLOYMENT_NAME" ]; then
-            echo "Error: Could not extract deployment name from PRODUCTION_DATABASE_URL host (got: $HOST)"
+            echo "Error: Could not extract deployment name from CI_DATABASE_URL host (got: $HOST)"
             exit 1
           fi
           echo "🔍 Executing: guepard list deployments --json (resolving base deployment by name: $BASE_DEPLOYMENT_NAME)"
@@ -169,7 +169,7 @@ jobs:
           echo "$DEPLOYMENTS_JSON" | jq '.' > /tmp/deployments.json
           BASE_DEPLOYMENT_ID=$(echo "$DEPLOYMENTS_JSON" | jq -r --arg name "$BASE_DEPLOYMENT_NAME" '.[] | select(.name == $name) | .id' | head -n 1)
           if [ -z "$BASE_DEPLOYMENT_ID" ] || [ "$BASE_DEPLOYMENT_ID" = "null" ]; then
-            echo "No deployment found with name '$BASE_DEPLOYMENT_NAME' (from PRODUCTION_DATABASE_URL host)"
+            echo "No deployment found with name '$BASE_DEPLOYMENT_NAME' (from CI_DATABASE_URL host)"
             exit 1
           fi
           echo "BASE_DEPLOYMENT_ID=$BASE_DEPLOYMENT_ID" >> "$GITHUB_ENV"
