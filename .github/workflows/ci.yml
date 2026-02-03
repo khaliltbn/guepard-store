@@ -428,7 +428,7 @@ jobs:
         env:
           TEST_MODE: contract
         working-directory: components/api
-        run: pnpm test
+        run: bun run test:contract
 
       - name: CI summary - API contract tests
         if: always()
