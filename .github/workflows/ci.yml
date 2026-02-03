@@ -148,16 +148,28 @@ jobs:
 
       - name: Select base deployment
         id: base_deployment
+        env:
+          PRODUCTION_DATABASE_URL: ${{ secrets.PRODUCTION_DATABASE_URL }}
         run: |
           set -e
           eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
-          # List deployments as JSON and select the first CREATED deployment for repository 'Guepard-shop2'
-          echo "🔍 Executing: guepard list deployments --json"
+          if [ -z "${PRODUCTION_DATABASE_URL:-}" ]; then
+            echo "Error: PRODUCTION_DATABASE_URL secret is not set (connection string for main/production DB)"
+            exit 1
+          fi
+          # Extract deployment name from URL host: postgresql://...@fierce-mountain-pe56o5.us-west-aws.db.guepard.run:port/... -> fierce-mountain-pe56o5
+          HOST=$(echo "$PRODUCTION_DATABASE_URL" | sed -n 's|.*@\([^:]*\):.*|\1|p')
+          BASE_DEPLOYMENT_NAME=$(echo "$HOST" | cut -d. -f1)
+          if [ -z "$BASE_DEPLOYMENT_NAME" ]; then
+            echo "Error: Could not extract deployment name from PRODUCTION_DATABASE_URL host (got: $HOST)"
+            exit 1
+          fi
+          echo "🔍 Executing: guepard list deployments --json (resolving base deployment by name: $BASE_DEPLOYMENT_NAME)"
           DEPLOYMENTS_JSON=$(guepard list deployments --json)
           echo "$DEPLOYMENTS_JSON" | jq '.' > /tmp/deployments.json
-          BASE_DEPLOYMENT_ID=$(echo "$DEPLOYMENTS_JSON" | jq -r '.[] | select(.repository == "Guepard-shop2" and .status == "CREATED") | .id' | head -n 1)
-          if [ -z "$BASE_DEPLOYMENT_ID" ]; then
-            echo "No suitable base deployment found for repository 'Guepard-shop2'"
+          BASE_DEPLOYMENT_ID=$(echo "$DEPLOYMENTS_JSON" | jq -r --arg name "$BASE_DEPLOYMENT_NAME" '.[] | select(.name == $name) | .id' | head -n 1)
+          if [ -z "$BASE_DEPLOYMENT_ID" ] || [ "$BASE_DEPLOYMENT_ID" = "null" ]; then
+            echo "No deployment found with name '$BASE_DEPLOYMENT_NAME' (from PRODUCTION_DATABASE_URL host)"
             exit 1
           fi
           echo "BASE_DEPLOYMENT_ID=$BASE_DEPLOYMENT_ID" >> "$GITHUB_ENV"
@@ -303,70 +315,96 @@ jobs:
         working-directory: components/api
         run: pnpm install --frozen-lockfile
 
+      - name: Get shadow deployment ID
+        id: shadow_deployment
+        env:
+          SHADOW_DATABASE_URL: ${{ secrets.SHADOW_DATABASE_URL }}
+        run: |
+          set -e
+          eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
+          if [ -z "${SHADOW_DATABASE_URL:-}" ]; then
+            echo "Error: SHADOW_DATABASE_URL secret is not set (connection string for shadow DB)"
+            exit 1
+          fi
+          # Extract deployment name from URL host: postgresql://...@fierce-mountain-pe56o5.us-west-aws.db.guepard.run:port/... -> fierce-mountain-pe56o5
+          HOST=$(echo "$SHADOW_DATABASE_URL" | sed -n 's|.*@\([^:]*\):.*|\1|p')
+          SHADOW_DEPLOYMENT_NAME=$(echo "$HOST" | cut -d. -f1)
+          if [ -z "$SHADOW_DEPLOYMENT_NAME" ]; then
+            echo "Error: Could not extract deployment name from SHADOW_DATABASE_URL host (got: $HOST)"
+            exit 1
+          fi
+          echo "🔍 Executing: guepard list deployments --json (resolving shadow deployment by name: $SHADOW_DEPLOYMENT_NAME)"
+          DEPLOYMENTS_JSON=$(guepard list deployments --json)
+          SHADOW_DEPLOYMENT_ID=$(echo "$DEPLOYMENTS_JSON" | jq -r --arg name "$SHADOW_DEPLOYMENT_NAME" '.[] | select(.name == $name) | .id' | head -n 1)
+          if [ -z "$SHADOW_DEPLOYMENT_ID" ] || [ "$SHADOW_DEPLOYMENT_ID" = "null" ]; then
+            echo "No deployment found with name '$SHADOW_DEPLOYMENT_NAME' (from SHADOW_DATABASE_URL host)"
+            exit 1
+          fi
+          echo "SHADOW_DEPLOYMENT_ID=$SHADOW_DEPLOYMENT_ID" >> "$GITHUB_ENV"
+          echo "shadow_deployment_id=$SHADOW_DEPLOYMENT_ID" >> "$GITHUB_OUTPUT"
+
       - name: Start compute for shadow
         run: |
-          set -euo pipefail
+          set -e
           eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
-          export SHADOW_DATABASE_URL="${{ secrets.SHADOW_DATABASE_URL }}"
-
-          echo "Starting compute for shadow database..."
-          guepard compute start -x "$SHADOW_DATABASE_URL" || true
-
+          echo "🔍 Executing: guepard compute start -x \$SHADOW_DEPLOYMENT_ID (deployment ID, not URL)"
+          guepard compute start -x "$SHADOW_DEPLOYMENT_ID" || true
 
       - name: Wait for shadow compute to be healthy
         id: shadow_ready
         run: |
-          set -euo pipefail
+          set -e
           eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
-          export SHADOW_DATABASE_URL="${{ secrets.SHADOW_DATABASE_URL }}"
-      
           echo "Waiting for shadow compute to be healthy..."
           echo "Initial wait for compute to start initializing..."
           sleep 15
-      
           for i in {1..20}; do
-            echo "🔍 Attempt $i/20: checking compute status"
-      
-            STATUS_JSON=$(guepard compute status -x "$SHADOW_DATABASE_URL" --json 2>&1 || echo '{"error":"command_failed"}')
-      
+            echo "🔍 Executing: guepard compute status -x \$SHADOW_DEPLOYMENT_ID --json (attempt $i/20)"
+            STATUS_JSON=$(guepard compute status -x "$SHADOW_DEPLOYMENT_ID" --json 2>&1 || echo '{"error":"command_failed"}')
             if echo "$STATUS_JSON" | grep -qE "502|Bad Gateway|Internal server error"; then
-              echo "Compute API not ready yet, waiting 10s..."
+              echo "Attempt $i/20: Compute API not ready yet, waiting 10s..."
             elif echo "$STATUS_JSON" | jq -e '.status' >/dev/null 2>&1; then
               HEALTHY=$(echo "$STATUS_JSON" | jq -r '.status')
               if [ "$HEALTHY" = "Healthy" ]; then
                 echo "✅ Shadow compute is healthy."
+                SHADOW_CONNECTION=$(echo "$STATUS_JSON" | jq -r '.connection_string // empty')
+                if [ -n "$SHADOW_CONNECTION" ] && [ "$SHADOW_CONNECTION" != "null" ]; then
+                  echo "SHADOW_DATABASE_URL=$SHADOW_CONNECTION" >> "$GITHUB_ENV"
+                  echo "Shadow connection string captured from compute status for Prisma migrate"
+                fi
                 exit 0
               else
-                echo "Compute status is '$HEALTHY', waiting 10s..."
+                echo "Attempt $i/20: Compute status is '$HEALTHY', waiting 10s..."
               fi
             else
-              echo "Unexpected response:"
-              echo "$STATUS_JSON" | head -c 200
+              echo "Attempt $i/20: Unexpected response: $(echo "$STATUS_JSON" | head -c 120)..."
             fi
-      
             sleep 10
           done
-      
           echo "❌ Error: shadow compute did not become healthy in time (~3.5 minutes)"
-          echo "Last status response:"
-          echo "$STATUS_JSON" | head -20
+          echo "Last status response: $(echo "$STATUS_JSON" | head -c 200)"
           exit 1
 
 
       - name: Run Prisma migrations against clone
         env:
           DATABASE_URL: ${{ env.DB_CONNECTION_STRING }}
+          SHADOW_FROM_ENV: ${{ env.SHADOW_DATABASE_URL }}
+          SHADOW_FROM_SECRET: ${{ secrets.SHADOW_DATABASE_URL }}
         working-directory: components/api
         run: |
           if [ -z "$DATABASE_URL" ] || [ "$DATABASE_URL" = "null" ]; then
             echo "Error: DATABASE_URL is not set or is null"
             exit 1
           fi
+          export SHADOW_DATABASE_URL="${SHADOW_FROM_ENV:-$SHADOW_FROM_SECRET}"
+          if [ -z "$SHADOW_DATABASE_URL" ] || [ "$SHADOW_DATABASE_URL" = "null" ]; then
+            echo "Error: SHADOW_DATABASE_URL is not set (expected from shadow compute status or secret SHADOW_DATABASE_URL)"
+            exit 1
+          fi
           echo "Applying Prisma migrations to clone database..."
           echo "Using DATABASE_URL: $(echo "$DATABASE_URL" | cut -c1-60)..."
-          export SHADOW_DATABASE_URL="${{ secrets.SHADOW_DATABASE_URL }}"
-
-          echo "Using DATABASE_URL: $(echo "$DATABASE_URL" | cut -c1-60)..."
+          echo "Using SHADOW_DATABASE_URL: $(echo "$SHADOW_DATABASE_URL" | cut -c1-60)..."
           bunx prisma migrate diff \
             --from-empty \
             --to-schema-datamodel prisma/schema.prisma \
