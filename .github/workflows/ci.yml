@@ -1,6 +1,10 @@
 name: CI
 
-"on": [push, pull_request, workflow_dispatch]
+"on":
+  push:
+    branches: [main]
+  pull_request: {}
+  workflow_dispatch: {}
 
 env:
   # Used by Guepard CLI installed via Homebrew (guepard login -c ...)
@@ -381,11 +385,32 @@ jobs:
           echo "Applying Prisma migrations to clone database..."
           echo "Using DATABASE_URL: $(echo "$DATABASE_URL" | cut -c1-60)..."
           echo "Using SHADOW_DATABASE_URL: $(echo "$SHADOW_DATABASE_URL" | cut -c1-60)..."
-          
-          echo "Detecting already applied migrations..."
-          bunx prisma migrate status || true
-          
-          echo "Deploying migrations (Prisma will automatically detect which are already applied)..."
+          bunx prisma migrate diff \
+            --from-empty \
+            --to-schema-datamodel prisma/schema.prisma \
+            --script \
+            --output prisma/migrations/000_baseline/migration.sql
+
+          set +e
+          bunx prisma migrate resolve --applied 000_baseline 2>&1 | tee /tmp/resolve.out
+          RESULT=${PIPESTATUS[0]}
+          set -e
+          if [ "$RESULT" -ne 0 ]; then
+            if grep -q "P3008\|already recorded as applied" /tmp/resolve.out; then
+              echo "000_baseline already applied in clone (expected when clone is from snapshot), continuing..."
+            else
+              cat /tmp/resolve.out
+              exit 1
+            fi
+          fi
+
+          bunx prisma migrate diff \
+            --from-migrations prisma/migrations \
+            --to-schema-datamodel prisma/schema.prisma \
+            --shadow-database-url "$SHADOW_DATABASE_URL" \
+            --script \
+            --output prisma/migrations/test-feature/migration.sql
+
           bunx prisma migrate deploy
 
       - name: Seed data with new format after migrations
