@@ -23,15 +23,14 @@ model Product {
   name               String      @db.VarChar(255)
   description        String
   price              Decimal     @db.Decimal(10, 2)
-  discountPercentage Decimal?    @map("discount_percentage") @db.Decimal(5, 2)
   stock              Int         @default(0)
   imageUrl           String?     @map("image_url")
-  createdAt   DateTime    @default(now()) @map("created_at")
-  updatedAt   DateTime    @updatedAt @map("updated_at")
-  categoryId  String      @map("category_id") @db.Uuid
-  orderItems  OrderItem[]
-  category    Category    @relation(fields: [categoryId], references: [id])
-  ratings     Rating[]
+  createdAt          DateTime    @default(now()) @map("created_at")
+  updatedAt          DateTime    @updatedAt @map("updated_at")
+  categoryId         String      @map("category_id") @db.Uuid
+  discountPercentage Decimal?    @map("discount_percentage") @db.Decimal(5, 2)
+  orderItems         OrderItem[]
+  category           Category    @relation(fields: [categoryId], references: [id])
 }
 
 model Order {
@@ -56,16 +55,3 @@ model OrderItem {
   order       Order    @relation(fields: [orderId], references: [id])
   product     Product  @relation(fields: [productId], references: [id])
 }
-
-model Rating {
-  id        String   @id @default(uuid()) @db.Uuid
-  productId String   @map("product_id") @db.Uuid
-  rating    Int      @db.SmallInt
-  review    String?
-  guestName String?  @map("guest_name") @db.VarChar(100)
-  createdAt DateTime @default(now()) @map("created_at")
-  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
-
-  @@map("ratings")
-}
-
