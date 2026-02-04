@@ -381,34 +381,12 @@ jobs:
           echo "Applying Prisma migrations to clone database..."
           echo "Using DATABASE_URL: $(echo "$DATABASE_URL" | cut -c1-60)..."
           echo "Using SHADOW_DATABASE_URL: $(echo "$SHADOW_DATABASE_URL" | cut -c1-60)..."
-          mkdir -p prisma/migrations/test-feature
-          bunx prisma migrate diff \
-            --from-migrations prisma/migrations \
-            --to-schema-datamodel prisma/schema.prisma \
-            --shadow-database-url "$SHADOW_DATABASE_URL" \
-            --script \
-            --output prisma/migrations/test-feature/migration.sql
-          set +e
-          bunx prisma migrate deploy 2>&1 | tee /tmp/deploy.out
-          DEPLOY_RESULT=${PIPESTATUS[0]}
-          set -e
-          if [ "$DEPLOY_RESULT" -ne 0 ]; then
-            if grep -qE "already exists|relation.*already exists" /tmp/deploy.out; then
-              echo "Clone already has schema (from snapshot), marking 000_baseline applied and retrying deploy..."
-              set +e
-              bunx prisma migrate resolve --applied 000_baseline 2>&1 | tee /tmp/resolve.out
-              R=${PIPESTATUS[0]}
-              set -e
-              if [ "$R" -ne 0 ] && ! grep -q "P3008\|already recorded as applied" /tmp/resolve.out; then
-                cat /tmp/resolve.out
-                exit 1
-              fi
-              bunx prisma migrate deploy
-            else
-              cat /tmp/deploy.out
-              exit 1
-            fi
-          fi
+          
+          echo "Detecting already applied migrations..."
+          bunx prisma migrate status || true
+          
+          echo "Deploying migrations (Prisma will automatically detect which are already applied)..."
+          bunx prisma migrate deploy
 
       - name: Seed data with new format after migrations
         env:
