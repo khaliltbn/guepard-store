@@ -385,6 +385,7 @@ jobs:
           echo "Applying Prisma migrations to clone database..."
           echo "Using DATABASE_URL: $(echo "$DATABASE_URL" | cut -c1-60)..."
           echo "Using SHADOW_DATABASE_URL: $(echo "$SHADOW_DATABASE_URL" | cut -c1-60)..."
+          rm -rf prisma/migrations/test-feature
           mkdir -p prisma/migrations/test-feature
           bunx prisma migrate diff \
             --from-migrations prisma/migrations \
@@ -392,7 +393,7 @@ jobs:
             --shadow-database-url "$SHADOW_DATABASE_URL" \
             --script \
             --output prisma/migrations/test-feature/migration.sql
-          if [ ! -s prisma/migrations/test-feature/migration.sql ]; then
+          if [ ! -f prisma/migrations/test-feature/migration.sql ] || [ ! -s prisma/migrations/test-feature/migration.sql ]; then
             rm -rf prisma/migrations/test-feature
           fi
           set +e
